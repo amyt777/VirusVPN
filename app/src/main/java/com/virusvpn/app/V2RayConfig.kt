@@ -8,7 +8,26 @@ import org.json.JSONObject
  * No geoip rules are used (no geoip.dat is bundled in v1).
  */
 object V2RayConfig {
-    fun build(server: VpnServer): String {
+    fun build(server: VpnServer, tweaks: TweakSettings? = null): String {
+        // Tweaks that actually change the connection (VLESS mapping):
+        // Front Query -> SNI, Back Query -> WS Host, Payload (starting with /) -> WS path.
+        // Type WS forces websocket, CF keeps the server network, HTTP forces tcp.
+        // Connection "Direct SSL/TLS" forces TLS; "SSL/TLS Payload" forces TLS + SNI override.
+        val sni = tweaks?.frontQuery?.trim()?.takeIf { it.contains(".") && !it.contains(" ") } ?: server.sni
+        val host = tweaks?.backQuery?.trim()?.takeIf { it.contains(".") && !it.contains(" ") } ?: server.host
+        val path = tweaks?.payload?.trim()?.takeIf { it.startsWith("/") } ?: server.path
+        var network = server.network
+        var security = server.security
+        if (tweaks != null) {
+            if (tweaks.type == "WS") network = "ws"
+            if (tweaks.type == "HTTP") network = "tcp"
+            if (tweaks.connection == "Direct SSL/TLS" || tweaks.connection == "SSL/TLS Payload") security = "tls"
+        }
+        val eff = server.copy(sni = sni, host = host, path = path, network = network, security = security)
+        return buildInternal(eff)
+    }
+
+    private fun buildInternal(server: VpnServer): String {
         val config = JSONObject()
         config.put("log", JSONObject().put("loglevel", "warning"))
 
