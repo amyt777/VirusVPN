@@ -25,15 +25,25 @@ class VirusVpnService : VpnService() {
         const val BROADCAST_STATUS = "com.virusvpn.app.STATUS"
         const val EXTRA_RUNNING = "running"
         const val EXTRA_ERROR = "error"
+        const val EXTRA_DOWN = "down_bps"
+        const val EXTRA_UP = "up_bps"
+        const val EXTRA_START_TIME = "start_time"
 
         @Volatile
         var isRunning = false
+            private set
+
+        @Volatile
+        var startTimeMillis: Long = 0L
             private set
     }
 
     private var tunInterface: ParcelFileDescriptor? = null
     private var controller: CoreController? = null
     private var coreThread: Thread? = null
+    private var statsThread: Thread? = null
+    @Volatile
+    private var statsRunning = false
 
     private val handler = object : CoreCallbackHandler {
         override fun onEmitStatus(code: Long, message: String): Long = 0L
@@ -81,8 +91,11 @@ class VirusVpnService : VpnService() {
             tunInterface = tun
             startForeground(1, buildNotification("Connected"))
             isRunning = true
+            startTimeMillis = System.currentTimeMillis()
+            ServerStore.setString(this, "connected_start", startTimeMillis.toString())
             sendStatus(true, null)
-            val configJson = V2RayConfig.build(server)
+            startStats()
+            val configJson = V2RayConfig.build(server, ServerStore.getTweaks(this))
             val tunFd = tun.fd
             coreThread = Thread {
                 try {
@@ -104,7 +117,48 @@ class VirusVpnService : VpnService() {
         }
     }
 
+    /** Poll /proc/net/dev for tun interfaces: real bytes through the VPN, once a second. */
+    private fun startStats() {
+        statsRunning = true
+        statsThread = Thread {
+            var prevRx = -1L
+            var prevTx = -1L
+            while (statsRunning && isRunning) {
+                try {
+                    var rx = 0L
+                    var tx = 0L
+                    java.io.File("/proc/net/dev").readLines().forEach { line ->
+                        val t = line.trim()
+                        if (t.startsWith("tun")) {
+                            val parts = t.split(":")[1].trim().split(Regex("\\s+"))
+                            if (parts.size >= 9) {
+                                rx += parts[0].toLongOrNull() ?: 0L
+                                tx += parts[8].toLongOrNull() ?: 0L
+                            }
+                        }
+                    }
+                    if (prevRx >= 0) {
+                        val down = (rx - prevRx).coerceAtLeast(0L)
+                        val up = (tx - prevTx).coerceAtLeast(0L)
+                        val intent = Intent(BROADCAST_STATUS)
+                        intent.putExtra(EXTRA_RUNNING, true)
+                        intent.putExtra(EXTRA_DOWN, down)
+                        intent.putExtra(EXTRA_UP, up)
+                        intent.putExtra(EXTRA_START_TIME, startTimeMillis)
+                        sendBroadcast(intent)
+                    }
+                    prevRx = rx
+                    prevTx = tx
+                } catch (_: Exception) {
+                }
+                try { Thread.sleep(1000) } catch (_: Exception) { break }
+            }
+        }
+        statsThread?.start()
+    }
+
     private fun stopCore() {
+        statsRunning = false
         try {
             controller?.stopLoop()
         } catch (_: Exception) {
@@ -116,6 +170,8 @@ class VirusVpnService : VpnService() {
         }
         tunInterface = null
         isRunning = false
+        startTimeMillis = 0L
+        ServerStore.setString(this, "connected_start", "")
         try {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } catch (_: Exception) {
@@ -126,6 +182,7 @@ class VirusVpnService : VpnService() {
     private fun sendStatus(running: Boolean, error: String?) {
         val intent = Intent(BROADCAST_STATUS)
         intent.putExtra(EXTRA_RUNNING, running)
+        if (running) intent.putExtra(EXTRA_START_TIME, startTimeMillis)
         if (error != null) intent.putExtra(EXTRA_ERROR, error)
         sendBroadcast(intent)
     }
