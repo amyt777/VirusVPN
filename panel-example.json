@@ -1,1 +1,35 @@
-{"announcement":"New Bangladesh server added. Press UPDATE to get it.","configVersion":"2.0","servers":[{"country":"BD","countryName":"Bangladesh","free":true,"link":"vless://YOUR-UUID@YOUR-SERVER-IP:443?security=reality&encryption=none&pbk=YOUR-PUBLIC-KEY&fp=chrome&sni=YOUR-SNI&type=tcp&flow=xtls-rprx-vision#Server-01%20Bangladesh","name":"Server-01 Bangladesh","protocol":"VLESS"}]}
+{
+  "announcement": "New Bangladesh server added. Press UPDATE to get it.",
+  "configVersion": "2.0",
+  "servers": [
+    {
+      "country": "BD",
+      "countryName": "Bangladesh",
+      "free": true,
+      "link": "vless://YOUR-UUID@YOUR-SERVER-IP:443?security=reality&encryption=none&pbk=YOUR-PUBLIC-KEY&fp=chrome&sni=YOUR-SNI&type=tcp&flow=xtls-rprx-vision#Server-01%20Bangladesh",
+      "name": "Server-01 Bangladesh",
+      "protocol": "VLESS"
+    }
+  ],
+  "telegramUrl": "https://t.me/yourchannel",
+  "networks": [
+    {
+      "name": "All Country UDP",
+      "subtitle": "Good Working",
+      "mode": "UDP",
+      "icon": ""
+    },
+    {
+      "name": "Airtel Facebook Pack",
+      "subtitle": "19 Taka 1 Days Unlimited",
+      "mode": "SSL/TLS",
+      "icon": ""
+    },
+    {
+      "name": "KSA Mobily Free",
+      "subtitle": "Good Working",
+      "mode": "INJECT",
+      "icon": ""
+    }
+  ]
+}

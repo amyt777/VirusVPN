@@ -56,6 +56,17 @@ data class PanelUpdate(
     val configVersion: String,
     val announcement: String,
     val servers: List<VpnServer>,
+    val networks: List<PanelNetwork> = emptyList(),
+    val telegramUrl: String = "",
+)
+
+/** A network from the admin panel: name, subtitle and the top-centre mode
+ * (UDP / SSL/TLS / INJECT) it makes the app show. No preset networks in the app. */
+data class PanelNetwork(
+    val name: String,
+    val subtitle: String = "",
+    val mode: String = "",
+    val icon: String = "",
 )
 
 fun countryFlag(countryCode: String): String {
@@ -135,6 +146,40 @@ object ServerStore {
             arr.put(o)
         }
         prefs(context).edit().putString("servers", arr.toString()).apply()
+    }
+
+    fun getNetworks(context: Context): List<PanelNetwork> {
+        val raw = prefs(context).getString("panel_networks", "[]") ?: "[]"
+        val out = mutableListOf<PanelNetwork>()
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                out.add(
+                    PanelNetwork(
+                        name = o.optString("name"),
+                        subtitle = o.optString("subtitle"),
+                        mode = o.optString("mode"),
+                        icon = o.optString("icon"),
+                    )
+                )
+            }
+        } catch (_: Exception) {
+        }
+        return out
+    }
+
+    fun saveNetworks(context: Context, networks: List<PanelNetwork>) {
+        val arr = JSONArray()
+        for (n in networks) {
+            val o = JSONObject()
+            o.put("name", n.name)
+            o.put("subtitle", n.subtitle)
+            o.put("mode", n.mode)
+            o.put("icon", n.icon)
+            arr.put(o)
+        }
+        prefs(context).edit().putString("panel_networks", arr.toString()).apply()
     }
 
     fun getSelectedId(context: Context): String? =
@@ -265,6 +310,22 @@ object ServerStore {
             val root = JSONObject(text)
             val version = root.optString("configVersion", root.optString("version", "1.0"))
             val announcement = root.optString("announcement", root.optString("notice", ""))
+            val telegramUrl = root.optString("telegramUrl", root.optString("telegram", ""))
+            val networks = mutableListOf<PanelNetwork>()
+            val netArr = root.optJSONArray("networks")
+            if (netArr != null) {
+                for (i in 0 until netArr.length()) {
+                    val o = netArr.getJSONObject(i)
+                    networks.add(
+                        PanelNetwork(
+                            name = o.optString("name"),
+                            subtitle = o.optString("subtitle", o.optString("info", "")),
+                            mode = o.optString("mode", o.optString("protocol", "")),
+                            icon = o.optString("icon", o.optString("logo", "")),
+                        )
+                    )
+                }
+            }
             val arr = root.optJSONArray("servers") ?: return null
             val servers = mutableListOf<VpnServer>()
             for (i in 0 until arr.length()) {
@@ -307,7 +368,7 @@ object ServerStore {
                     )
                 }
             }
-            return PanelUpdate(version.ifBlank { "1.0" }, announcement, servers)
+            return PanelUpdate(version.ifBlank { "1.0" }, announcement, servers, networks, telegramUrl)
         } catch (_: Exception) {
             return null
         }

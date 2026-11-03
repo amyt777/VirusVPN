@@ -10,6 +10,8 @@
     <application
         android:allowBackup="false"
         android:label="Virus VPN"
+        android:icon="@drawable/ic_virus_logo"
+        android:roundIcon="@drawable/ic_virus_logo"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity

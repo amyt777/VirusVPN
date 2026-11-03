@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -91,6 +92,16 @@ private val Pink = Color(0xFFEAABAD)
 private val Red = Color(0xFFE53935)
 private val PremiumGold = Color(0xFFFFC107)
 
+// Built-in admin-panel update URL, hidden inside the app — never shown in the UI
+// and never typed by the user. The admin sets this at build time once the panel
+// exists. Empty until then, so UPDATE reports "not configured yet" honestly.
+private const val PANEL_UPDATE_URL = ""
+
+// Built-in default server slot: one server shipped inside the app, like other
+// VPN apps. The admin fills this VLESS link at build time once a real VPS
+// server exists. Empty until then — no fake server is invented here.
+private const val BUILTIN_SERVER_LINK = ""
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,22 +137,28 @@ fun VirusHomeScreen(onExit: () -> Unit) {
     var durationSec by remember { mutableStateOf(0L) }
     val speedHistory = remember { mutableStateListOf<Float>() }
     var configVersion by remember { mutableStateOf(ServerStore.getString(context, "panel_config_version", "1.0")) }
-    var panelUrl by rememberSaveable { mutableStateOf(ServerStore.getString(context, "panel_url")) }
+    var networks by remember { mutableStateOf(ServerStore.getNetworks(context)) }
+    var telegramUrl by remember { mutableStateOf(ServerStore.getString(context, "panel_telegram_url")) }
     var username by rememberSaveable { mutableStateOf(ServerStore.getString(context, "username")) }
     var password by rememberSaveable { mutableStateOf(ServerStore.getString(context, "password")) }
     var passwordVisible by remember { mutableStateOf(false) }
-    var networkChoice by rememberSaveable { mutableStateOf(ServerStore.getString(context, "network_choice", "WiFi BDIX Bypass")) }
-    var customMode by rememberSaveable { mutableStateOf(ServerStore.getString(context, "tweak_enabled", "false") == "true") }
+    var networkChoice by rememberSaveable { mutableStateOf(ServerStore.getString(context, "network_choice", "")) }
     var showServerDialog by remember { mutableStateOf(false) }
     var showNetworkDialog by remember { mutableStateOf(false) }
     var showTweaksDialog by remember { mutableStateOf(false) }
-    var showAddDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var announcement by remember { mutableStateOf<String?>(null) }
     var updateStatus by remember { mutableStateOf("") }
-    var editLink by remember { mutableStateOf("") }
 
     val selectedServer = servers.firstOrNull { it.id == selectedId }
+    val selectedNetwork = networks.firstOrNull { it.name == networkChoice } ?: networks.firstOrNull()
+    val topMode = selectedNetwork?.mode?.ifBlank { null }
+        ?: when {
+            networkChoice.contains("UDP", ignoreCase = true) -> "UDP"
+            networkChoice.contains("SSL", ignoreCase = true) || networkChoice.contains("TLS", ignoreCase = true) -> "SSL/TLS"
+            networkChoice.contains("INJECT", ignoreCase = true) -> "INJECT"
+            else -> "—"
+        }
 
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
@@ -197,7 +214,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             isRunning = false
         } else {
             if (selectedServer == null && servers.isEmpty()) {
-                Toast.makeText(context, "No server yet — add one from your admin panel (UPDATES) or +", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "No server yet — press UPDATES to fetch servers from your admin panel", Toast.LENGTH_LONG).show()
                 showUpdateDialog = true
                 return
             }
@@ -210,20 +227,35 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         servers = ServerStore.getServers(context)
         selectedId = ServerStore.getSelectedId(context)
         configVersion = ServerStore.getString(context, "panel_config_version", "1.0")
+        networks = ServerStore.getNetworks(context)
+        telegramUrl = ServerStore.getString(context, "panel_telegram_url")
+        if (networkChoice.isBlank()) {
+            networkChoice = networks.firstOrNull()?.name ?: ""
+        }
+    }
+
+    // Built-in default server: if the admin filled BUILTIN_SERVER_LINK at build
+    // time and no panel servers exist yet, ship that one server inside the app.
+    LaunchedEffect(Unit) {
+        if (servers.isEmpty() && BUILTIN_SERVER_LINK.isNotBlank()) {
+            ServerStore.parseVless(BUILTIN_SERVER_LINK)?.let { builtin ->
+                ServerStore.saveServers(context, listOf(builtin))
+                ServerStore.setSelectedId(context, builtin.id)
+                refreshServers()
+            }
+        }
     }
 
     fun fetchPanel() {
-        val urlText = panelUrl.trim()
-        if (urlText.isBlank()) {
-            updateStatus = "Enter your admin panel update URL first."
+        if (PANEL_UPDATE_URL.isBlank()) {
+            updateStatus = "Panel update is not configured in this build yet — the admin sets the built-in panel URL once the panel exists."
             return
         }
-        ServerStore.setString(context, "panel_url", urlText)
         updateStatus = "Updating..."
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val conn = URL(urlText).openConnection() as HttpURLConnection
+                    val conn = URL(PANEL_UPDATE_URL).openConnection() as HttpURLConnection
                     conn.connectTimeout = 15000
                     conn.readTimeout = 15000
                     conn.requestMethod = "GET"
@@ -234,14 +266,23 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                     null
                 }
             }
-            if (result == null || result.servers.isEmpty()) {
-                updateStatus = "Update failed. Check the panel URL and internet, then try again."
+            if (result == null || (result.servers.isEmpty() && result.networks.isEmpty())) {
+                updateStatus = "Update failed. Check internet and the panel, then try again."
             } else {
-                ServerStore.saveServers(context, result.servers)
-                ServerStore.setSelectedId(context, result.servers.firstOrNull()?.id)
+                if (result.servers.isNotEmpty()) {
+                    ServerStore.saveServers(context, result.servers)
+                    ServerStore.setSelectedId(context, result.servers.firstOrNull()?.id)
+                }
+                if (result.networks.isNotEmpty()) {
+                    ServerStore.saveNetworks(context, result.networks)
+                    ServerStore.setString(context, "network_choice", result.networks.first().name)
+                }
+                if (result.telegramUrl.isNotBlank()) {
+                    ServerStore.setString(context, "panel_telegram_url", result.telegramUrl)
+                }
                 ServerStore.setString(context, "panel_config_version", result.configVersion)
                 refreshServers()
-                updateStatus = "${result.servers.size} server(s) updated from panel."
+                updateStatus = "Updated from panel: ${result.servers.size} server(s), ${result.networks.size} network(s)."
                 if (result.announcement.isNotBlank()) announcement = result.announcement
             }
         }
@@ -260,10 +301,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         label = "glowAlpha",
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.TopCenter) {
+    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFE8F5E9), Color.White, Color.White))), contentAlignment = Alignment.TopCenter) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .widthIn(max = 480.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
@@ -296,7 +337,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("↓ " + if (isRunning) formatSpeed(downBps) else "0 B/s", fontSize = 13.sp)
-                Text("V2RAY", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(topMode, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text("↑ " + if (isRunning) formatSpeed(upBps) else "0 B/s", fontSize = 13.sp)
             }
             Spacer(Modifier.height(4.dp))
@@ -305,9 +346,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 color = if (isRunning) Green else Red,
                 fontSize = 22.sp, fontWeight = FontWeight.Bold,
             )
-            Text("Config Version : $configVersion", fontSize = 12.sp, color = Color.Gray)
-            Text("IP : ${selectedServer?.address ?: "--"}", fontSize = 12.sp, color = Color.Gray)
-            Text("Duration : " + if (isRunning) formatDuration(durationSec) else "00:00:00", fontSize = 12.sp, color = Color.Gray)
+            Text(
+                "Config: $configVersion  •  IP: ${selectedServer?.address ?: "--"}  •  " + if (isRunning) formatDuration(durationSec) else "00:00:00",
+                fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(12.dp))
 
             // Real-time graph, visible while connected.
@@ -361,101 +403,25 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(if (customMode) "Custom Tweaks ON" else "Good Working", color = Green, fontSize = 12.sp)
+                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: "Good Working", color = Green, fontSize = 12.sp)
                 }
                 Text("▾", color = Color.Gray)
             }
             Spacer(Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Green, RoundedCornerShape(24.dp)),
-                verticalAlignment = Alignment.CenterVertically,
+            // Telegram channel box — link comes from the admin panel, not typed by the user.
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).background(Color.White)
+                    .clickable {
+                        if (telegramUrl.isBlank()) {
+                            Toast.makeText(context, "Telegram channel not set by admin yet.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl))) }
+                            catch (_: Exception) { Toast.makeText(context, "Could not open Telegram link.", Toast.LENGTH_SHORT).show() }
+                        }
+                    }.padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                Box(modifier = Modifier.width(56.dp).height(48.dp).background(Green), contentAlignment = Alignment.Center) {
-                    Text("ID", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                BasicTextField(
-                    value = username,
-                    onValueChange = { username = it; ServerStore.setString(context, "username", it) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    decorationBox = { inner -> if (username.isEmpty()) Text("Username", color = Color.Gray); inner() },
-                )
-                Text("Expiry: --/--/--", color = Green, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
-            }
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Green, RoundedCornerShape(24.dp)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(modifier = Modifier.width(56.dp).height(48.dp).background(Green), contentAlignment = Alignment.Center) {
-                    Text("🔑", fontSize = 18.sp)
-                }
-                BasicTextField(
-                    value = password,
-                    onValueChange = { password = it; ServerStore.setString(context, "password", it) },
-                    singleLine = true,
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    decorationBox = { inner -> if (password.isEmpty()) Text("Password", color = Color.Gray); inner() },
-                )
-                Text(
-                    if (passwordVisible) "Hide" else "Show", color = Green, fontSize = 12.sp,
-                    modifier = Modifier.padding(end = 12.dp).clickable { passwordVisible = !passwordVisible },
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-
-            // START / STOP with glow ring while connected.
-            Box(contentAlignment = Alignment.Center) {
-                if (isRunning) {
-                    Box(modifier = Modifier.size((200 * glowScale).dp).clip(CircleShape).background(Green.copy(alpha = glowAlpha)))
-                    Box(modifier = Modifier.size((190 * glowScale).dp).clip(CircleShape).border(3.dp, PremiumGold.copy(alpha = glowAlpha), CircleShape))
-                }
-                Box(
-                    modifier = Modifier.size(190.dp).clip(CircleShape).background(if (isRunning) Green else Pink).clickable { toggleService() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier = Modifier.size(168.dp).clip(CircleShape).background(if (isRunning) Green else Color.White)
-                            .border(2.dp, if (isRunning) Color.White else Pink, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(if (isRunning) "STOP" else "START", color = if (isRunning) Color.White else Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("+", color = Green, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editLink = ""; showAddDialog = true })
-                Text("  |  ", color = Color.Gray)
-                Text("✎", color = Green, fontSize = 22.sp, modifier = Modifier.clickable { selectedServer?.let { editLink = it.rawLink; showAddDialog = true } })
-                Text("  |  ", color = Color.Gray)
-                Text("🗑", color = Green, fontSize = 22.sp, modifier = Modifier.clickable {
-                    selectedServer?.let { s ->
-                        val rest = servers.filter { it.id != s.id }
-                        ServerStore.saveServers(context, rest)
-                        ServerStore.setSelectedId(context, rest.firstOrNull()?.id)
-                        refreshServers()
-                    }
-                })
-                Text("  |  ", color = Color.Gray)
-                Text("Custom", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Spacer(Modifier.width(6.dp))
-                Switch(
-                    checked = customMode,
-                    onCheckedChange = {
-                        customMode = it
-                        ServerStore.setString(context, "tweak_enabled", it.toString())
-                        networkChoice = if (it) "Custom Payload" else "WiFi BDIX Bypass"
-                        ServerStore.setString(context, "network_choice", networkChoice)
-                    },
-                    colors = SwitchDefaults.colors(checkedThumbColor = Green, checkedTrackColor = LightGreen),
-                )
-            }
-            Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(32.dp))
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 BottomButton(label = "UPDATES", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
@@ -471,34 +437,16 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             servers = servers,
             onClose = { showServerDialog = false },
             onPick = { id -> ServerStore.setSelectedId(context, id); refreshServers(); showServerDialog = false },
-            onAdd = { showServerDialog = false; editLink = ""; showAddDialog = true },
             onUpdate = { showServerDialog = false; updateStatus = ""; showUpdateDialog = true },
         )
     }
     if (showNetworkDialog) {
         NetworkPickDialog(
+            networks = networks,
             current = networkChoice,
             onClose = { showNetworkDialog = false },
             onPick = { networkChoice = it; ServerStore.setString(context, "network_choice", it); showNetworkDialog = false },
-        )
-    }
-    if (showAddDialog) {
-        AddServerDialog(
-            initial = editLink,
-            onClose = { showAddDialog = false },
-            onSave = { link ->
-                val parsed = ServerStore.parseVless(link)
-                if (parsed == null) {
-                    Toast.makeText(context, "Invalid VLESS link", Toast.LENGTH_SHORT).show()
-                } else {
-                    val rest = servers.filter { it.id != selectedId || editLink.isBlank() }
-                    val updated = rest + parsed
-                    ServerStore.saveServers(context, updated)
-                    ServerStore.setSelectedId(context, parsed.id)
-                    refreshServers()
-                    showAddDialog = false
-                }
-            },
+            onUpdate = { showNetworkDialog = false; updateStatus = ""; showUpdateDialog = true },
         )
     }
     if (showTweaksDialog) {
@@ -510,15 +458,8 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("✦ UPDATES", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = panelUrl, onValueChange = { panelUrl = it },
-                        label = { Text("Admin panel update URL") },
-                        placeholder = { Text("https://your-panel/update.json") },
-                        singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "No server is built into the app. When your admin panel adds a server, press UPDATE and it will appear here automatically.",
+                        "Press UPDATE to fetch the latest servers and networks from your admin panel. Servers and networks come only from the panel — nothing is added manually in the app.",
                         fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center,
                     )
                     if (updateStatus.isNotBlank()) {
@@ -579,7 +520,7 @@ private fun RowScope.BottomButton(label: String, modifier: Modifier, onClick: ()
 }
 
 @Composable
-private fun ServerPickDialog(servers: List<VpnServer>, onClose: () -> Unit, onPick: (String) -> Unit, onAdd: () -> Unit, onUpdate: () -> Unit) {
+private fun ServerPickDialog(servers: List<VpnServer>, onClose: () -> Unit, onPick: (String) -> Unit, onUpdate: () -> Unit) {
     var query by remember { mutableStateOf("") }
     Dialog(onDismissRequest = onClose) {
         Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
@@ -591,7 +532,6 @@ private fun ServerPickDialog(servers: List<VpnServer>, onClose: () -> Unit, onPi
                     Text("No servers yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Text("Nothing is pre-loaded. When the admin adds a server in the panel, press UPDATE and it will appear here automatically.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                     TextButton(onClick = onUpdate) { Text("UPDATE FROM PANEL", color = Green, fontWeight = FontWeight.Bold) }
-                    TextButton(onClick = onAdd) { Text("Add manually (VLESS link)", color = Green) }
                 }
                 filtered.forEach { s ->
                     ServerRow(server = s) { onPick(s.id) }
@@ -628,44 +568,30 @@ private fun ServerRow(server: VpnServer, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NetworkPickDialog(current: String, onClose: () -> Unit, onPick: (String) -> Unit) {
-    val options = listOf("WiFi BDIX Bypass", "Custom Payload", "Direct Connection", "Auto")
+private fun NetworkPickDialog(networks: List<PanelNetwork>, current: String, onClose: () -> Unit, onPick: (String) -> Unit, onUpdate: () -> Unit) {
     Dialog(onDismissRequest = onClose) {
         Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("NETWORK", color = Green, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(Modifier.height(12.dp))
-                options.forEach { option ->
-                    Row(modifier = Modifier.fillMaxWidth().clickable { onPick(option) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = option == current, onClick = { onPick(option) }, colors = RadioButtonDefaults.colors(selectedColor = Green))
+                if (networks.isEmpty()) {
+                    Text("No networks yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Networks come only from the admin panel. Press UPDATE and the admin's networks will appear here.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
+                    TextButton(onClick = onUpdate) { Text("UPDATE FROM PANEL", color = Green, fontWeight = FontWeight.Bold) }
+                }
+                networks.forEach { net ->
+                    Row(modifier = Modifier.fillMaxWidth().clickable { onPick(net.name) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = net.name == current, onClick = { onPick(net.name) }, colors = RadioButtonDefaults.colors(selectedColor = Green))
                         Spacer(Modifier.width(8.dp))
-                        Text(option, fontSize = 15.sp)
+                        Column(Modifier.weight(1f)) {
+                            Text(net.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            if (net.subtitle.isNotBlank()) Text(net.subtitle, fontSize = 12.sp, color = Green)
+                        }
+                        if (net.mode.isNotBlank()) Text(net.mode, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Green)
                     }
                 }
-                Text("Direct Connection has no pre-loaded server. Servers come only from the admin panel.", fontSize = 12.sp, color = Color.Gray)
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                     TextButton(onClick = onClose) { Text("CLOSE", color = Green, fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddServerDialog(initial: String, onClose: () -> Unit, onSave: (String) -> Unit) {
-    var link by remember { mutableStateOf(initial) }
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Add Server", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(Modifier.height(12.dp))
-                Text("Paste a VLESS link. No server is included in the app.", fontSize = 13.sp, color = Color.Gray)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("VLESS link") }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onClose) { Text("CANCEL", color = Green) }
-                    TextButton(onClick = { onSave(link) }) { Text("SAVE", color = Green, fontWeight = FontWeight.Bold) }
                 }
             }
         }
