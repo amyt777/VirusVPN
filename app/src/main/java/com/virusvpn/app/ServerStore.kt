@@ -49,6 +49,7 @@ data class TweakSettings(
     val useDefaultProxy: Boolean = true,
     val proxyHost: String = "",
     val proxyPort: String = "",
+    val protocol: String = "VLESS",
 )
 
 /** One panel update: a config version, an optional centred announcement, and servers. */
@@ -273,6 +274,7 @@ object ServerStore {
             useDefaultProxy = p.getBoolean("tweak_default_proxy", true),
             proxyHost = p.getString("tweak_proxy_host", "") ?: "",
             proxyPort = p.getString("tweak_proxy_port", "") ?: "",
+            protocol = p.getString("tweak_protocol", "VLESS") ?: "VLESS",
         )
     }
 
@@ -289,6 +291,7 @@ object ServerStore {
             .putBoolean("tweak_default_proxy", t.useDefaultProxy)
             .putString("tweak_proxy_host", t.proxyHost)
             .putString("tweak_proxy_port", t.proxyPort)
+            .putString("tweak_protocol", t.protocol)
             .apply()
     }
 

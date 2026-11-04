@@ -105,6 +105,8 @@ private const val BUILTIN_SERVER_LINK = ""
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Bornali-style green status bar.
+        window.statusBarColor = android.graphics.Color.parseColor("#00A651")
         setContent { VirusHomeScreen(onExit = { finish() }) }
     }
 }
@@ -147,6 +149,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
     var showNetworkDialog by remember { mutableStateOf(false) }
     var showTweaksDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showTweakAccessDialog by remember { mutableStateOf(false) }
+    var customMode by rememberSaveable { mutableStateOf(ServerStore.getString(context, "tweak_enabled", "false") == "true") }
+    var editLink by remember { mutableStateOf("") }
     var announcement by remember { mutableStateOf<String?>(null) }
     var updateStatus by remember { mutableStateOf("") }
 
@@ -157,7 +163,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             networkChoice.contains("UDP", ignoreCase = true) -> "UDP"
             networkChoice.contains("SSL", ignoreCase = true) || networkChoice.contains("TLS", ignoreCase = true) -> "SSL/TLS"
             networkChoice.contains("INJECT", ignoreCase = true) -> "INJECT"
-            else -> "—"
+            else -> "V2RAY"
         }
 
     DisposableEffect(Unit) {
@@ -301,7 +307,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         label = "glowAlpha",
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFE8F5E9), Color.White, Color.White))), contentAlignment = Alignment.TopCenter) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.TopCenter) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -311,34 +317,27 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(12.dp))
-            // Premium header: gradient band with glowing logo when connected.
-            Box(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                    .background(Brush.verticalGradient(listOf(Green, DarkGreen)))
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (isRunning) {
-                            Box(modifier = Modifier.size((110 * glowScale).dp).clip(CircleShape).background(Green.copy(alpha = glowAlpha)))
-                            Box(modifier = Modifier.size((100 * glowScale).dp).clip(CircleShape).border(2.dp, PremiumGold.copy(alpha = glowAlpha), CircleShape))
-                        }
-                        Box(
-                            modifier = Modifier.size(96.dp).clip(CircleShape).background(Color.White).border(3.dp, LightGreen, CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) { Text("V", color = Green, fontSize = 48.sp, fontWeight = FontWeight.Bold) }
+            // Bornali-style centred logo + name + thin green divider (no oversized header).
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (isRunning) {
+                        Box(modifier = Modifier.size((110 * glowScale).dp).clip(CircleShape).background(Green.copy(alpha = glowAlpha)))
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Virus VPN", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                    Text(if (isRunning) "● Connected" else "● Disconnected", color = Color.White, fontSize = 13.sp)
+                    Box(
+                        modifier = Modifier.size(96.dp).clip(CircleShape).background(Color.White).border(3.dp, Green, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("V", color = Green, fontSize = 48.sp, fontWeight = FontWeight.Bold) }
                 }
+                Spacer(Modifier.height(8.dp))
+                Text("Virus VPN", color = Color.Black, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Green))
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("↓ " + if (isRunning) formatSpeed(downBps) else "0 B/s", fontSize = 13.sp)
-                Text(topMode, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text("↑ " + if (isRunning) formatSpeed(upBps) else "0 B/s", fontSize = 13.sp)
+                Text(topMode, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("↓ " + if (isRunning) formatSpeed(downBps) else "0 B/s", fontSize = 13.sp)
             }
             Spacer(Modifier.height(4.dp))
             Text(
@@ -402,34 +401,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Text("◉", color = Green, fontSize = 22.sp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: "Good Working", color = Green, fontSize = 12.sp)
+                    Text(if (networkChoice.isBlank()) "No network yet" else networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: if (networkChoice.isBlank()) "Admin adds networks from panel" else "Good Working", color = Green, fontSize = 12.sp)
                 }
                 Text("▾", color = Color.Gray)
-            }
-            Spacer(Modifier.height(12.dp))
-
-            // Telegram channel box — link comes from the admin panel, not typed by the user.
-            Box(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).background(Color.White)
-                    .clickable {
-                        if (telegramUrl.isBlank()) {
-                            Toast.makeText(context, "Telegram channel not set by admin yet.", Toast.LENGTH_SHORT).show()
-                        } else {
-                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl))) }
-                            catch (_: Exception) { Toast.makeText(context, "Could not open Telegram link.", Toast.LENGTH_SHORT).show() }
-                        }
-                    }.padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("✈", color = Green, fontSize = 22.sp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Telegram Channel", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("Join Now", color = Green, fontSize = 12.sp)
-                    }
-                    Text("›", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                }
             }
             Spacer(Modifier.height(12.dp))
 
@@ -496,10 +471,34 @@ fun VirusHomeScreen(onExit: () -> Unit) {
 
             Spacer(Modifier.height(32.dp))
 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("+", color = Green, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { editLink = ""; showAddDialog = true })
+                Text("  |  ", color = Color.Gray)
+                Text("✎", color = Green, fontSize = 22.sp, modifier = Modifier.clickable { selectedServer?.let { editLink = it.rawLink; showAddDialog = true } })
+                Text("  |  ", color = Color.Gray)
+                Text("🗑", color = Green, fontSize = 22.sp, modifier = Modifier.clickable {
+                    selectedServer?.let { srv ->
+                        val rest = servers.filter { it.id != srv.id }
+                        ServerStore.saveServers(context, rest)
+                        ServerStore.setSelectedId(context, rest.firstOrNull()?.id)
+                        refreshServers()
+                    }
+                })
+                Text("  |  ", color = Color.Gray)
+                Text("Custom", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Spacer(Modifier.width(6.dp))
+                Switch(
+                    checked = customMode,
+                    onCheckedChange = { customMode = it; ServerStore.setString(context, "tweak_enabled", it.toString()) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = Green, checkedTrackColor = LightGreen),
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+
             Row(modifier = Modifier.fillMaxWidth()) {
-                BottomButton(label = "UPDATES", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
-                BottomButton(label = "TWEAKS", modifier = Modifier.weight(1f)) { showTweaksDialog = true }
-                BottomButton(label = "EXIT", modifier = Modifier.weight(1f)) { onExit() }
+                BottomButton(label = "UPDATES", icon = "↓", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
+                BottomButton(label = "TWEAKS", icon = "🛠", modifier = Modifier.weight(1f)) { showTweakAccessDialog = true }
+                BottomButton(label = "EXIT", icon = "↪", modifier = Modifier.weight(1f)) { onExit() }
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -521,6 +520,43 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             onPick = { networkChoice = it; ServerStore.setString(context, "network_choice", it); showNetworkDialog = false },
             onUpdate = { showNetworkDialog = false; updateStatus = ""; showUpdateDialog = true },
         )
+    }
+    if (showAddDialog) {
+        AddServerDialog(
+            initial = editLink,
+            onClose = { showAddDialog = false },
+            onSave = { link ->
+                val parsed = ServerStore.parseVless(link)
+                if (parsed == null) {
+                    Toast.makeText(context, "Invalid VLESS link", Toast.LENGTH_SHORT).show()
+                } else {
+                    val rest = servers.filter { it.id != selectedId || editLink.isBlank() }
+                    val updated = rest + parsed
+                    ServerStore.saveServers(context, updated)
+                    ServerStore.setSelectedId(context, parsed.id)
+                    refreshServers()
+                    showAddDialog = false
+                }
+            },
+        )
+    }
+    if (showTweakAccessDialog) {
+        Dialog(onDismissRequest = { showTweakAccessDialog = false }) {
+            Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Tweak Access For Professional Users Only", fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(20.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Box(modifier = Modifier.weight(1f).padding(end = 8.dp).border(1.dp, Green, RoundedCornerShape(8.dp)).clickable { showTweakAccessDialog = false; showTweaksDialog = true }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text("SHOW", color = Green, fontWeight = FontWeight.Bold)
+                        }
+                        Box(modifier = Modifier.weight(1f).padding(start = 8.dp).border(1.dp, Green, RoundedCornerShape(8.dp)).clickable { showTweakAccessDialog = false }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text("HIDE", color = Green, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
     if (showTweaksDialog) {
         TweaksDialog(onClose = { showTweaksDialog = false })
@@ -585,11 +621,14 @@ private fun VirusCard(label: String, onClick: () -> Unit, content: @Composable R
 }
 
 @Composable
-private fun RowScope.BottomButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+private fun RowScope.BottomButton(label: String, icon: String, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier = modifier.border(1.dp, Green, RoundedCornerShape(8.dp)).clickable { onClick() }.padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-    ) { Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+    ) {
+        Text(icon, color = Green, fontSize = 14.sp)
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
 }
 
 @Composable
@@ -672,6 +711,27 @@ private fun NetworkPickDialog(networks: List<PanelNetwork>, current: String, onC
 }
 
 @Composable
+private fun AddServerDialog(initial: String, onClose: () -> Unit, onSave: (String) -> Unit) {
+    var link by remember { mutableStateOf(initial) }
+    Dialog(onDismissRequest = onClose) {
+        Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Add Server", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(12.dp))
+                Text("Paste a VLESS link. Admin panel servers are managed separately in the panel.", fontSize = 13.sp, color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("VLESS link") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(12.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onClose) { Text("CANCEL", color = Green) }
+                    TextButton(onClick = { onSave(link) }) { Text("SAVE", color = Green, fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TweaksDialog(onClose: () -> Unit) {
     val context = LocalContext.current
     val saved = remember { ServerStore.getTweaks(context) }
@@ -687,12 +747,28 @@ private fun TweaksDialog(onClose: () -> Unit) {
     var proxyHost by rememberSaveable { mutableStateOf(saved.proxyHost) }
     var proxyPort by rememberSaveable { mutableStateOf(saved.proxyPort) }
     var showMenu by remember { mutableStateOf(false) }
+    var tweakProtocol by rememberSaveable { mutableStateOf(saved.protocol) }
+    var showProtocolMenu by remember { mutableStateOf(false) }
+    val protocolOptions = listOf("VLESS", "VMess", "Trojan", "SSH", "WireGuard")
     val connectionOptions = listOf("Direct Connection", "Direct SSL/TLS", "HTTP Proxy", "SSL/TLS Payload", "SSL/TLS Proxy + Payload")
     Dialog(onDismissRequest = onClose) {
         Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                 Text("Custom Tweaks", color = Red, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("Saved tweaks are applied to the VLESS config on the next START: Front Query → SNI, Back Query → Host, Payload (/) → Path, WS/CF/HTTP → network, SSL/TLS options → security.", fontSize = 12.sp, color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                Text("Protocol", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Box {
+                    Row(modifier = Modifier.fillMaxWidth().clickable { showProtocolMenu = true }.padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(tweakProtocol, fontSize = 15.sp); Text("▾", color = Color.Gray)
+                    }
+                    DropdownMenu(expanded = showProtocolMenu, onDismissRequest = { showProtocolMenu = false }) {
+                        protocolOptions.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { tweakProtocol = option; showProtocolMenu = false }) }
+                    }
+                }
+                if (tweakProtocol != "VLESS") {
+                    Text("Note: only VLESS connects with the current engine. $tweakProtocol is shown in the UI only until its engine and a test server arrive — selecting it will not connect yet.", fontSize = 12.sp, color = Red)
+                }
                 Spacer(Modifier.height(12.dp))
                 Row {
                     listOf("OVPN", "UDP", "V2ray").forEach { option ->
@@ -710,7 +786,7 @@ private fun TweaksDialog(onClose: () -> Unit) {
                         connectionOptions.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { connection = option; showMenu = false }) }
                     }
                 }
-                Row {
+                if (tweakProtocol == "VLESS" || tweakProtocol == "VMess" || tweakProtocol == "Trojan") Row {
                     listOf("CF", "WS", "HTTP").forEach { option ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).clickable { type = option }) {
                             RadioButton(selected = type == option, onClick = { type = option }, colors = RadioButtonDefaults.colors(selectedColor = Green))
@@ -722,7 +798,14 @@ private fun TweaksDialog(onClose: () -> Unit) {
                 OutlinedTextField(value = tweakInfo, onValueChange = { tweakInfo = it }, label = { Text("Tweak Info") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = frontQuery, onValueChange = { frontQuery = it }, label = { Text("Front Query (SNI)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = backQuery, onValueChange = { backQuery = it }, label = { Text("Back Query (Host)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = payload, onValueChange = { payload = it }, label = { Text("Payload (Path, starts with /)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(value = payload, onValueChange = { payload = it }, label = { Text("Payload (Path, starts with /)") }, singleLine = true, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Box(modifier = Modifier.size(48.dp).clip(CircleShape).border(1.dp, Green, CircleShape).clickable {
+                        if (payload.isBlank()) payload = "/"
+                        else Toast.makeText(context, "Payload already added", Toast.LENGTH_SHORT).show()
+                    }, contentAlignment = Alignment.Center) { Text("+", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Use default server and squid port", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(checked = useDefaultProxy, onCheckedChange = { useDefaultProxy = it }, colors = SwitchDefaults.colors(checkedThumbColor = Green, checkedTrackColor = LightGreen))
@@ -736,7 +819,7 @@ private fun TweaksDialog(onClose: () -> Unit) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onClose) { Text("CANCEL", color = Green, fontWeight = FontWeight.Bold) }
                     TextButton(onClick = {
-                        ServerStore.saveTweaks(context, TweakSettings(mode, connection, type, tweakName, tweakInfo, frontQuery, backQuery, payload, useDefaultProxy, proxyHost, proxyPort))
+                        ServerStore.saveTweaks(context, TweakSettings(mode, connection, type, tweakName, tweakInfo, frontQuery, backQuery, payload, useDefaultProxy, proxyHost, proxyPort, tweakProtocol))
                         Toast.makeText(context, "Tweaks saved — applied on next START", Toast.LENGTH_SHORT).show()
                         onClose()
                     }) { Text("SAVE", color = Green, fontWeight = FontWeight.Bold) }
