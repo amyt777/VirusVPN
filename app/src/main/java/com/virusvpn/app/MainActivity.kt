@@ -421,7 +421,80 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                         }
                     }.padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                Spacer(Modifier.height(32.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✈", color = Green, fontSize = 22.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Telegram Channel", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Join Now", color = Green, fontSize = 12.sp)
+                    }
+                    Text("›", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Green, RoundedCornerShape(24.dp)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.width(56.dp).height(48.dp).background(Green), contentAlignment = Alignment.Center) {
+                    Text("ID", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                BasicTextField(
+                    value = username,
+                    onValueChange = { username = it; ServerStore.setString(context, "username", it) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    decorationBox = { inner -> if (username.isEmpty()) Text("Username", color = Color.Gray); inner() },
+                )
+                Text("Expiry: --/--/--", color = Green, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp)).border(2.dp, Green, RoundedCornerShape(24.dp)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.width(56.dp).height(48.dp).background(Green), contentAlignment = Alignment.Center) {
+                    Text("🔑", fontSize = 18.sp)
+                }
+                BasicTextField(
+                    value = password,
+                    onValueChange = { password = it; ServerStore.setString(context, "password", it) },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    decorationBox = { inner -> if (password.isEmpty()) Text("Password", color = Color.Gray); inner() },
+                )
+                Text(
+                    if (passwordVisible) "Hide" else "Show", color = Green, fontSize = 12.sp,
+                    modifier = Modifier.padding(end = 12.dp).clickable { passwordVisible = !passwordVisible },
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+
+            // START / STOP with glow ring while connected.
+            Box(contentAlignment = Alignment.Center) {
+                if (isRunning) {
+                    Box(modifier = Modifier.size((200 * glowScale).dp).clip(CircleShape).background(Green.copy(alpha = glowAlpha)))
+                    Box(modifier = Modifier.size((190 * glowScale).dp).clip(CircleShape).border(3.dp, PremiumGold.copy(alpha = glowAlpha), CircleShape))
+                }
+                Box(
+                    modifier = Modifier.size(190.dp).clip(CircleShape).background(if (isRunning) Green else Pink).clickable { toggleService() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier.size(168.dp).clip(CircleShape).background(if (isRunning) Green else Color.White)
+                            .border(2.dp, if (isRunning) Color.White else Pink, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(if (isRunning) "STOP" else "START", color = if (isRunning) Color.White else Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+
+            Spacer(Modifier.height(32.dp))
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 BottomButton(label = "UPDATES", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
