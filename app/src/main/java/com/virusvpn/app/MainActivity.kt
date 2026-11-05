@@ -255,7 +255,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 }
                 is FirebaseSync.VerifyResult.Ok -> {
                     if (v.email.isBlank()) {
-                        Toast.makeText(context, "No email set for this user in the admin panel — ask the admin", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "No email set for this user — ask the admin", Toast.LENGTH_LONG).show()
                         return@launch
                     }
                     val authed = withContext(Dispatchers.IO) {
@@ -397,33 +397,31 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                         Box(modifier = Modifier.size((110 * glowScale).dp).clip(CircleShape).background(Green.copy(alpha = glowAlpha)))
                     }
                     Box(
-                        modifier = Modifier.size(96.dp).clip(CircleShape).background(Color.White).border(3.dp, Green, CircleShape),
+                        modifier = Modifier.size(96.dp).clip(CircleShape).background(Color.Black).border(3.dp, Green, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Text("V", color = Green, fontSize = 48.sp, fontWeight = FontWeight.Bold) }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Virus VPN", color = Color.Black, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("Virus VPN", color = Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(8.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Green))
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("↑ " + if (isRunning) formatSpeed(upBps) else "0 B/s", fontSize = 13.sp)
+                Text("☁ ↑ " + if (isRunning) formatSpeed(upBps) else "0 KB", fontSize = 13.sp)
                 Text(topMode, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("↓ " + if (isRunning) formatSpeed(downBps) else "0 B/s", fontSize = 13.sp)
+                Text(if (isRunning) formatSpeed(downBps) else "0 KB" + " ☁ ↓", fontSize = 13.sp)
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                if (isRunning) "Connected" else "Disconnected",
+                if (isRunning) "V2Ray Connected" else "V2Ray Disconnected",
                 color = if (isRunning) Green else Red,
                 fontSize = 22.sp, fontWeight = FontWeight.Bold,
             )
-            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(LightGreen).padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "Config: $configVersion  •  IP: ${selectedServer?.address ?: "--"}  •  " + if (isRunning) formatDuration(durationSec) else "00:00:00",
-                    fontSize = 12.sp, color = Color(0xFF1B5E20), textAlign = TextAlign.Center,
-                )
-            }
+            Text(
+                "Config Version : $configVersion  |  ${selectedServer?.address ?: "--"}  |  VPN Duration : " + if (isRunning) formatDuration(durationSec) else "0.0.0.0",
+                fontSize = 12.sp, color = Color.Black, textAlign = TextAlign.Center,
+            )
             Spacer(Modifier.height(12.dp))
 
             // Real-time graph, visible while connected.
@@ -459,7 +457,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             }
 
             VirusCard(label = "LOCATION", onClick = { showServerDialog = true }) {
-                Text("⌖", color = Green, fontSize = 22.sp)
+                Text("🌐", fontSize = 22.sp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(selectedServer?.name ?: "No server yet", fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -473,7 +471,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             Spacer(Modifier.height(12.dp))
 
             VirusCard(label = "NETWORK", onClick = { showNetworkDialog = true }) {
-                Text("◉", color = Green, fontSize = 22.sp)
+                Text("📶", fontSize = 22.sp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (networkChoice.isBlank()) "No network yet" else networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -488,14 +486,14 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(modifier = Modifier.width(56.dp).height(48.dp).background(Green), contentAlignment = Alignment.Center) {
-                    Text("ID", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("👤", fontSize = 20.sp)
                 }
                 BasicTextField(
                     value = username,
                     onValueChange = { username = it; ServerStore.setString(context, "username", it) },
                     singleLine = true,
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    decorationBox = { inner -> if (username.isEmpty()) Text("Username", color = Color.Gray); inner() },
+                    decorationBox = { inner -> if (username.isEmpty()) Text("Username", color = Red); inner() },
                 )
                 Text("Expiry: " + ServerStore.getString(context, "expiry_display", "--/--/--"), color = Green, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
             }
@@ -514,7 +512,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    decorationBox = { inner -> if (password.isEmpty()) Text("Password", color = Color.Gray); inner() },
+                    decorationBox = { inner -> if (password.isEmpty()) Text("Password", color = Red); inner() },
                 )
                 Text(
                     if (passwordVisible) "Hide" else "Show", color = Green, fontSize = 12.sp,
@@ -597,7 +595,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         }
         // Fixed bottom navigation — always visible, never scrolled away.
         Row(modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 8.dp)) {
-            BottomButton(label = "UPDATES", icon = "↓", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
+            BottomButton(label = "UPDATES", icon = "⬇", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
             BottomButton(label = "TWEAKS", icon = "🛠", modifier = Modifier.weight(1f)) { showTweakAccessDialog = true }
             BottomButton(label = "EXIT", icon = "↪", modifier = Modifier.weight(1f)) { onExit() }
         }
@@ -707,16 +705,19 @@ private fun startVpnService(context: Context) {
 
 @Composable
 private fun VirusCard(label: String, onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).padding(4.dp).clickable { onClick() },
-    ) {
-        Column {
-            Text(label, color = Green, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
+    Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable { onClick() }) {
+        Box(
+            modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).padding(top = 10.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(8.dp).border(1.dp, LightGreen, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, content = content,
             )
         }
+        Text(
+            label, color = Green, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 16.dp).offset(y = (-8).dp).background(Color.White).padding(horizontal = 4.dp),
+        )
     }
 }
 
@@ -742,8 +743,8 @@ private fun ServerPickDialog(servers: List<VpnServer>, onClose: () -> Unit, onPi
                 val filtered = servers.filter { it.name.contains(query, ignoreCase = true) || query.isBlank() }
                 if (filtered.isEmpty()) {
                     Text("No servers yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Nothing is pre-loaded. When the admin adds a server in the panel, press UPDATE and it will appear here automatically.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
-                    TextButton(onClick = onUpdate) { Text("UPDATE FROM PANEL", color = Green, fontWeight = FontWeight.Bold) }
+                    Text("Press UPDATE to load the latest servers.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
+                    TextButton(onClick = onUpdate) { Text("UPDATE", color = Green, fontWeight = FontWeight.Bold) }
                 }
                 filtered.forEach { s ->
                     ServerRow(server = s) { onPick(s.id) }
@@ -789,7 +790,7 @@ private fun NetworkPickDialog(networks: List<PanelNetwork>, current: String, onC
                 if (networks.isEmpty()) {
                     Text("No networks yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Text("Press UPDATE to get the latest networks.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
-                    TextButton(onClick = onUpdate) { Text("UPDATE FROM PANEL", color = Green, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = onUpdate) { Text("UPDATE", color = Green, fontWeight = FontWeight.Bold) }
                 }
                 networks.forEach { net ->
                     Row(modifier = Modifier.fillMaxWidth().clickable { onPick(net.name) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
