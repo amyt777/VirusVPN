@@ -24,7 +24,7 @@ object FirebaseSync {
     )
 
     sealed interface VerifyResult {
-        data class Ok(val expiry: String) : VerifyResult
+        data class Ok(val expiry: String, val email: String) : VerifyResult
         object NotFound : VerifyResult
         object Expired : VerifyResult
         /** Firebase unreachable / not configured — caller decides (do not block offline). */
@@ -87,7 +87,7 @@ object FirebaseSync {
                     // Unparseable expiry — do not block on a bad date format.
                 }
             }
-            VerifyResult.Ok(expiry)
+            VerifyResult.Ok(expiry, doc.getString("email") ?: "")
         } catch (_: Exception) {
             VerifyResult.Offline
         }

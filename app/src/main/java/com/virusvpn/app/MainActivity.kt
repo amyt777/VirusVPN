@@ -84,6 +84,7 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 private val Green = Color(0xFF00A651)
@@ -231,33 +232,49 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             showUpdateDialog = true
             return
         }
-        // Real account check: username must exist in Firebase and not be expired.
-        // Offline / unconfigured Firebase does not block — it cannot verify, so it warns only.
+        // LOCKED: no username + password, no connection. Password is checked with
+        // Firebase Authentication using the email stored on the user's Firestore record
+        // (admin sets it in the panel; passwords are never stored in Firestore).
         val name = username.trim()
-        if (name.isNotBlank()) {
-            Toast.makeText(context, "Checking account...", Toast.LENGTH_SHORT).show()
-            scope.launch {
-                when (val v = withContext(Dispatchers.IO) { FirebaseSync.verifyUser(name) }) {
-                    is FirebaseSync.VerifyResult.NotFound -> {
-                        Toast.makeText(context, "Username not found in Firebase — ask the admin", Toast.LENGTH_LONG).show()
+        val pass = password.trim()
+        if (name.isBlank() || pass.isBlank()) {
+            Toast.makeText(context, "Login first — username and password required", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(context, "Checking account...", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            when (val v = withContext(Dispatchers.IO) { FirebaseSync.verifyUser(name) }) {
+                is FirebaseSync.VerifyResult.NotFound -> {
+                    Toast.makeText(context, "Username not found in Firebase — ask the admin", Toast.LENGTH_LONG).show()
+                }
+                is FirebaseSync.VerifyResult.Expired -> {
+                    Toast.makeText(context, "Account expired", Toast.LENGTH_LONG).show()
+                }
+                is FirebaseSync.VerifyResult.Offline -> {
+                    Toast.makeText(context, "Could not verify account — check internet and try again", Toast.LENGTH_LONG).show()
+                }
+                is FirebaseSync.VerifyResult.Ok -> {
+                    if (v.email.isBlank()) {
+                        Toast.makeText(context, "No email set for this user in the admin panel — ask the admin", Toast.LENGTH_LONG).show()
+                        return@launch
                     }
-                    is FirebaseSync.VerifyResult.Expired -> {
-                        Toast.makeText(context, "Account expired", Toast.LENGTH_LONG).show()
+                    val authed = withContext(Dispatchers.IO) {
+                        try {
+                            com.google.firebase.auth.FirebaseAuth.getInstance()
+                                .signInWithEmailAndPassword(v.email, pass).await()
+                            true
+                        } catch (_: Exception) { false }
                     }
-                    is FirebaseSync.VerifyResult.Ok -> {
-                        if (v.expiry.isNotBlank()) {
-                            ServerStore.setString(context, "expiry_display", v.expiry)
-                        }
-                        startAfterCheck()
+                    if (!authed) {
+                        Toast.makeText(context, "Wrong password", Toast.LENGTH_LONG).show()
+                        return@launch
                     }
-                    is FirebaseSync.VerifyResult.Offline -> {
-                        Toast.makeText(context, "Could not verify account (offline) — starting anyway", Toast.LENGTH_SHORT).show()
-                        startAfterCheck()
+                    if (v.expiry.isNotBlank()) {
+                        ServerStore.setString(context, "expiry_display", v.expiry)
                     }
+                    startAfterCheck()
                 }
             }
-        } else {
-            startAfterCheck()
         }
     }
 

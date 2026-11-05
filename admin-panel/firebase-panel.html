@@ -15,7 +15,7 @@ small{color:#9fc9ad}
 <h1>🛡 Virus VPN — Firebase Admin Panel</h1>
 <p><small>Database: Firebase Firestore (free tier). VPN traffic server is separate — this panel only stores servers, networks, users and settings. Setup steps are in FIREBASE-SETUP.md. Paste your Firebase web config in FIREBASE_CONFIG below.</small></p>
 
-<div class="card"><h2>🔐 Admin Login</h2>
+<div class="card" id="loginCard"><h2>🔐 Admin Login</h2>
 <p><small>Status: <b id="authStatus">Not logged in</b></small></p>
 <label>Email <input id="adminEmail" placeholder="admin@example.com"></label>
 <label>Password <input id="adminPass" type="password" placeholder="Admin password"></label>
@@ -24,6 +24,7 @@ small{color:#9fc9ad}
 <p><small>Admin account: create it in Firebase Console → Authentication → Add user. Only that account can add/edit/delete below (see firestore.rules).</small></p>
 </div>
 
+<div id="dashboard" style="display:none">
 <div class="card"><h2>📊 Live Overview (from Firestore)</h2>
 <div id="stats"><small>Login first — stats load from the users and servers collections.</small></div>
 <p><small>Server load is not in Firestore — it needs the traffic server. It shows "—" until that side exists.</small></p>
@@ -63,6 +64,7 @@ small{color:#9fc9ad}
 
 <div class="card"><h2>👤 Add User</h2>
 <label>Username <input id="userName" placeholder="user01"></label>
+<label>Email (same as in Firebase Authentication — used to check the password) <input id="userEmail" placeholder="user@example.com"></label>
 <label>Expiry (date) <input id="userExpiry" type="date"></label>
 <label><input type="checkbox" id="userPremium" style="width:auto"> PREMIUM (unchecked = FREE)</label>
 <button id="addUserBtn">SAVE USER</button>
@@ -76,6 +78,7 @@ small{color:#9fc9ad}
 <pre id="out" style="white-space:pre-wrap;background:#0a1710;padding:10px;border-radius:10px"></pre>
 </div>
 
+</div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -102,7 +105,12 @@ try {
   } else {
     const app = initializeApp(FIREBASE_CONFIG);
     auth = getAuth(app); db = getFirestore(app);
-    onAuthStateChanged(auth, u => { $("authStatus").textContent = u ? ("Logged in: " + u.email) : "Not logged in"; if (u) startListening(); });
+    onAuthStateChanged(auth, u => {
+      $("authStatus").textContent = u ? ("Logged in: " + u.email) : "Not logged in";
+      $("loginCard").style.display = u ? "none" : "block";
+      $("dashboard").style.display = u ? "block" : "none";
+      if (u) startListening();
+    });
   }
 } catch (e) { $("authStatus").textContent = "Firebase init failed: " + e.message; }
 
@@ -162,7 +170,7 @@ $("addNetworkBtn").onclick = async () => {
 $("addUserBtn").onclick = async () => {
   if (!needLogin()) return;
   const username = $("userName").value.trim(); if (!username) return alert("Username first.");
-  await addDoc(collection(db, "users"), { username, expiry: $("userExpiry").value || "", premium: $("userPremium").checked, active: false, gbUsed: 0 });
+  await addDoc(collection(db, "users"), { username, email: $("userEmail").value.trim(), expiry: $("userExpiry").value || "", premium: $("userPremium").checked, active: false, gbUsed: 0 });
   alert("User saved to Firebase. Set their password in Firebase Authentication.");
 };
 function appJSON() {
