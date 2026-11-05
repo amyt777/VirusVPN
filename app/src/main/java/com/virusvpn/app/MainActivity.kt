@@ -213,6 +213,11 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         if (result.resultCode == android.app.Activity.RESULT_OK) startVpnService(context)
     }
 
+    fun startAfterCheck() {
+        val prepare = VpnService.prepare(context)
+        if (prepare == null) startVpnService(context) else vpnLauncher.launch(prepare)
+    }
+
     fun toggleService() {
         if (isRunning) {
             val intent = Intent(context, VirusVpnService::class.java)
@@ -254,11 +259,6 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         } else {
             startAfterCheck()
         }
-    }
-
-    fun startAfterCheck() {
-        val prepare = VpnService.prepare(context)
-        if (prepare == null) startVpnService(context) else vpnLauncher.launch(prepare)
     }
 
     fun refreshServers() {
