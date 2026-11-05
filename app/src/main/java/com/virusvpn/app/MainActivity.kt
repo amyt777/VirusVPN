@@ -219,15 +219,46 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             intent.action = VirusVpnService.ACTION_STOP
             context.startService(intent)
             isRunning = false
-        } else {
-            if (selectedServer == null && servers.isEmpty()) {
-                Toast.makeText(context, "No server yet — press UPDATES to fetch servers from your admin panel", Toast.LENGTH_LONG).show()
-                showUpdateDialog = true
-                return
-            }
-            val prepare = VpnService.prepare(context)
-            if (prepare == null) startVpnService(context) else vpnLauncher.launch(prepare)
+            return
         }
+        if (selectedServer == null && servers.isEmpty()) {
+            Toast.makeText(context, "No server yet — press UPDATES to fetch servers from Firebase", Toast.LENGTH_LONG).show()
+            showUpdateDialog = true
+            return
+        }
+        // Real account check: username must exist in Firebase and not be expired.
+        // Offline / unconfigured Firebase does not block — it cannot verify, so it warns only.
+        val name = username.trim()
+        if (name.isNotBlank()) {
+            Toast.makeText(context, "Checking account...", Toast.LENGTH_SHORT).show()
+            scope.launch {
+                when (val v = withContext(Dispatchers.IO) { FirebaseSync.verifyUser(name) }) {
+                    is FirebaseSync.VerifyResult.NotFound -> {
+                        Toast.makeText(context, "Username not found in Firebase — ask the admin", Toast.LENGTH_LONG).show()
+                    }
+                    is FirebaseSync.VerifyResult.Expired -> {
+                        Toast.makeText(context, "Account expired", Toast.LENGTH_LONG).show()
+                    }
+                    is FirebaseSync.VerifyResult.Ok -> {
+                        if (v.expiry.isNotBlank()) {
+                            ServerStore.setString(context, "expiry_display", v.expiry)
+                        }
+                        startAfterCheck()
+                    }
+                    is FirebaseSync.VerifyResult.Offline -> {
+                        Toast.makeText(context, "Could not verify account (offline) — starting anyway", Toast.LENGTH_SHORT).show()
+                        startAfterCheck()
+                    }
+                }
+            }
+        } else {
+            startAfterCheck()
+        }
+    }
+
+    fun startAfterCheck() {
+        val prepare = VpnService.prepare(context)
+        if (prepare == null) startVpnService(context) else vpnLauncher.launch(prepare)
     }
 
     fun refreshServers() {
@@ -254,12 +285,31 @@ fun VirusHomeScreen(onExit: () -> Unit) {
     }
 
     fun fetchPanel() {
-        if (PANEL_UPDATE_URL.isBlank()) {
-            updateStatus = "Panel update is not configured in this build yet — the admin sets the built-in panel URL once the panel exists."
-            return
-        }
-        updateStatus = "Updating..."
+        updateStatus = "Updating from Firebase..."
         scope.launch {
+            val firebase = withContext(Dispatchers.IO) { FirebaseSync.fetchPanel() }
+            if (firebase != null && (firebase.servers.isNotEmpty() || firebase.networks.isNotEmpty())) {
+                if (firebase.servers.isNotEmpty()) {
+                    ServerStore.saveServers(context, firebase.servers)
+                    ServerStore.setSelectedId(context, firebase.servers.firstOrNull()?.id)
+                }
+                if (firebase.networks.isNotEmpty()) {
+                    ServerStore.saveNetworks(context, firebase.networks)
+                    ServerStore.setString(context, "network_choice", firebase.networks.first().name)
+                }
+                if (firebase.telegramUrl.isNotBlank()) {
+                    ServerStore.setString(context, "panel_telegram_url", firebase.telegramUrl)
+                }
+                ServerStore.setString(context, "panel_config_version", firebase.configVersion)
+                refreshServers()
+                updateStatus = "Updated from Firebase: ${firebase.servers.size} server(s), ${firebase.networks.size} network(s)."
+                if (firebase.announcement.isNotBlank()) announcement = firebase.announcement
+                return@launch
+            }
+            if (PANEL_UPDATE_URL.isBlank()) {
+                updateStatus = "Firebase: no servers yet — add them in the admin panel, then press UPDATE."
+                return@launch
+            }
             val result = withContext(Dispatchers.IO) {
                 try {
                     val conn = URL(PANEL_UPDATE_URL).openConnection() as HttpURLConnection
@@ -426,7 +476,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     decorationBox = { inner -> if (username.isEmpty()) Text("Username", color = Color.Gray); inner() },
                 )
-                Text("Expiry: --/--/--", color = Green, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
+                Text("Expiry: " + ServerStore.getString(context, "expiry_display", "--/--/--"), color = Green, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
             }
             Spacer(Modifier.height(12.dp))
 
