@@ -228,7 +228,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             return
         }
         if (selectedServer == null && servers.isEmpty()) {
-            Toast.makeText(context, "No server yet — press UPDATES to fetch servers from Firebase", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "No server yet — press UPDATES", Toast.LENGTH_LONG).show()
             showUpdateDialog = true
             return
         }
@@ -289,6 +289,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         }
     }
 
+    // AUTO-UPDATE: when the app opens and the user is online, servers and networks
+    // update automatically from Firebase — no need to press UPDATE.
+    LaunchedEffect(Unit) { fetchPanel() }
+
     // Built-in default server: if the admin filled BUILTIN_SERVER_LINK at build
     // time and no panel servers exist yet, ship that one server inside the app.
     LaunchedEffect(Unit) {
@@ -302,7 +306,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
     }
 
     fun fetchPanel() {
-        updateStatus = "Updating from Firebase..."
+        updateStatus = "Updating..."
         scope.launch {
             val firebase = withContext(Dispatchers.IO) { FirebaseSync.fetchPanel() }
             if (firebase != null && (firebase.servers.isNotEmpty() || firebase.networks.isNotEmpty())) {
@@ -319,12 +323,12 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 }
                 ServerStore.setString(context, "panel_config_version", firebase.configVersion)
                 refreshServers()
-                updateStatus = "Updated from Firebase: ${firebase.servers.size} server(s), ${firebase.networks.size} network(s)."
+                updateStatus = "Updated."
                 if (firebase.announcement.isNotBlank()) announcement = firebase.announcement
                 return@launch
             }
             if (PANEL_UPDATE_URL.isBlank()) {
-                updateStatus = "Firebase: no servers yet — add them in the admin panel, then press UPDATE."
+                updateStatus = ""
                 return@launch
             }
             val result = withContext(Dispatchers.IO) {
@@ -341,7 +345,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 }
             }
             if (result == null || (result.servers.isEmpty() && result.networks.isEmpty())) {
-                updateStatus = "Update failed. Check internet and the panel, then try again."
+                updateStatus = "Could not update. Check your internet and try again."
             } else {
                 if (result.servers.isNotEmpty()) {
                     ServerStore.saveServers(context, result.servers)
@@ -356,7 +360,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 }
                 ServerStore.setString(context, "panel_config_version", result.configVersion)
                 refreshServers()
-                updateStatus = "Updated from panel: ${result.servers.size} server(s), ${result.networks.size} network(s)."
+                updateStatus = "Updated."
                 if (result.announcement.isNotBlank()) announcement = result.announcement
             }
         }
@@ -460,7 +464,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(selectedServer?.name ?: "No server yet", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Text(
-                        if (selectedServer == null) "Admin adds servers from panel" else "${countryFlag(selectedServer.countryCode)} ${selectedServer.countryName} • ${selectedServer.protocol} • ${if (selectedServer.isFree) "FREE" else "PREMIUM"}",
+                        if (selectedServer == null) "Tap UPDATES to load servers" else "${countryFlag(selectedServer.countryCode)} ${selectedServer.countryName} • ${selectedServer.protocol} • ${if (selectedServer.isFree) "FREE" else "PREMIUM"}",
                         color = Green, fontSize = 12.sp,
                     )
                 }
@@ -473,7 +477,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (networkChoice.isBlank()) "No network yet" else networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: if (networkChoice.isBlank()) "Admin adds networks from panel" else "Good Working", color = Green, fontSize = 12.sp)
+                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: if (networkChoice.isBlank()) "Tap UPDATES to load networks" else "Good Working", color = Green, fontSize = 12.sp)
                 }
                 Text("▾", color = Color.Gray)
             }
@@ -664,7 +668,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                     Text("✦ UPDATES", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Press UPDATE to fetch the latest servers and networks from your admin panel. Servers and networks come only from the panel — nothing is added manually in the app.",
+                        "Press UPDATE to get the latest servers and networks.",
                         fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center,
                     )
                     if (updateStatus.isNotBlank()) {
@@ -784,7 +788,7 @@ private fun NetworkPickDialog(networks: List<PanelNetwork>, current: String, onC
                 Spacer(Modifier.height(12.dp))
                 if (networks.isEmpty()) {
                     Text("No networks yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Networks come only from the admin panel. Press UPDATE and the admin's networks will appear here.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
+                    Text("Press UPDATE to get the latest networks.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                     TextButton(onClick = onUpdate) { Text("UPDATE FROM PANEL", color = Green, fontWeight = FontWeight.Bold) }
                 }
                 networks.forEach { net ->
