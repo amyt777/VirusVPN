@@ -229,7 +229,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             return
         }
         if (selectedServer == null && servers.isEmpty()) {
-            Toast.makeText(context, "No server yet — press UPDATES", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "No server yet", Toast.LENGTH_LONG).show()
             showUpdateDialog = true
             return
         }
@@ -246,7 +246,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         scope.launch {
             when (val v = withContext(Dispatchers.IO) { FirebaseSync.verifyUser(name) }) {
                 is FirebaseSync.VerifyResult.NotFound -> {
-                    Toast.makeText(context, "Username not found in Firebase — ask the admin", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Username not found", Toast.LENGTH_LONG).show()
                 }
                 is FirebaseSync.VerifyResult.Expired -> {
                     Toast.makeText(context, "Account expired", Toast.LENGTH_LONG).show()
@@ -256,7 +256,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 }
                 is FirebaseSync.VerifyResult.Ok -> {
                     if (v.email.isBlank()) {
-                        Toast.makeText(context, "No email set for this user — ask the admin", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Could not verify account — try again", Toast.LENGTH_LONG).show()
                         return@launch
                     }
                     val authed = withContext(Dispatchers.IO) {
@@ -463,7 +463,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(selectedServer?.name ?: "No server yet", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     Text(
-                        if (selectedServer == null) "Tap UPDATES to load servers" else "${countryFlag(selectedServer.countryCode)} ${selectedServer.countryName} • ${selectedServer.protocol} • ${if (selectedServer.isFree) "FREE" else "PREMIUM"}",
+                        if (selectedServer == null) "—" else "${countryFlag(selectedServer.countryCode)} ${selectedServer.countryName} • ${selectedServer.protocol} • ${if (selectedServer.isFree) "FREE" else "PREMIUM"}",
                         color = Green, fontSize = 12.sp,
                     )
                 }
@@ -476,7 +476,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (networkChoice.isBlank()) "No network yet" else networkChoice, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: if (networkChoice.isBlank()) "Tap UPDATES to load networks" else "Good Working", color = Green, fontSize = 12.sp)
+                    Text(selectedNetwork?.subtitle?.ifBlank { "Good Working" } ?: if (networkChoice.isBlank()) "—" else "Good Working", color = Green, fontSize = 12.sp)
                 }
                 Text("▾", color = Color.Gray)
             }
@@ -575,7 +575,7 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).background(Color.White)
                     .clickable {
                         if (telegramUrl.isBlank()) {
-                            Toast.makeText(context, "Telegram channel not set by admin yet.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Telegram channel not available yet.", Toast.LENGTH_SHORT).show()
                         } else {
                             try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl))) }
                             catch (_: Exception) { Toast.makeText(context, "Could not open Telegram link.", Toast.LENGTH_SHORT).show() }
@@ -666,10 +666,6 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("✦ UPDATES", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Press UPDATE to get the latest servers and networks.",
-                        fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center,
-                    )
                     if (updateStatus.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
                         Text(updateStatus, fontSize = 13.sp, color = Green, textAlign = TextAlign.Center)
@@ -744,7 +740,6 @@ private fun ServerPickDialog(servers: List<VpnServer>, onClose: () -> Unit, onPi
                 val filtered = servers.filter { it.name.contains(query, ignoreCase = true) || query.isBlank() }
                 if (filtered.isEmpty()) {
                     Text("No servers yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Press UPDATE to load the latest servers.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                     TextButton(onClick = onUpdate) { Text("UPDATE", color = Green, fontWeight = FontWeight.Bold) }
                 }
                 filtered.forEach { s ->
@@ -790,7 +785,6 @@ private fun NetworkPickDialog(networks: List<PanelNetwork>, current: String, onC
                 Spacer(Modifier.height(12.dp))
                 if (networks.isEmpty()) {
                     Text("No networks yet.", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Press UPDATE to get the latest networks.", fontSize = 13.sp, color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
                     TextButton(onClick = onUpdate) { Text("UPDATE", color = Green, fontWeight = FontWeight.Bold) }
                 }
                 networks.forEach { net ->
@@ -820,7 +814,7 @@ private fun AddServerDialog(initial: String, onClose: () -> Unit, onSave: (Strin
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Add Server", color = Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(12.dp))
-                Text("Paste a VLESS link. Admin panel servers are managed separately in the panel.", fontSize = 13.sp, color = Color.Gray)
+                Text("Paste a VLESS link.", fontSize = 13.sp, color = Color.Gray)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("VLESS link") }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
