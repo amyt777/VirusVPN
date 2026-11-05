@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -289,10 +290,6 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         }
     }
 
-    // AUTO-UPDATE: when the app opens and the user is online, servers and networks
-    // update automatically from Firebase — no need to press UPDATE.
-    LaunchedEffect(Unit) { fetchPanel() }
-
     // Built-in default server: if the admin filled BUILTIN_SERVER_LINK at build
     // time and no panel servers exist yet, ship that one server inside the app.
     LaunchedEffect(Unit) {
@@ -378,6 +375,10 @@ fun VirusHomeScreen(onExit: () -> Unit) {
         animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "glowAlpha",
     )
+
+    // AUTO-UPDATE: when the app opens and the user is online, servers and networks
+    // update automatically from Firebase — no need to press UPDATE.
+    LaunchedEffect(Unit) { fetchPanel() }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.TopCenter) {
         Column(modifier = Modifier.fillMaxSize().widthIn(max = 480.dp), horizontalAlignment = Alignment.CenterHorizontally) {
