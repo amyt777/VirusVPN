@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Virus VPN — Firebase Admin Panel</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f1f16;color:#e8f5ec;margin:0;padding:16px}
+h1{color:#00d977}h2{color:#7be8b0}.card{background:#1a3325;border:1px solid #2a5a3f;border-radius:14px;padding:14px;margin:10px 0}
+.stat{display:inline-block;background:#123524;border-radius:12px;padding:12px 16px;margin:6px;min-width:130px}
+.stat b{font-size:22px;display:block;color:#fff}
+input,select,textarea{width:100%;padding:9px;margin:5px 0;border-radius:8px;border:1px solid #2a5a3f;background:#0f1f16;color:#fff;box-sizing:border-box}
+button{background:#00a651;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;margin:4px 2px}
+button.danger{background:#c62828}button.ghost{background:#2a5a3f}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #2a5a3f;text-align:left;font-size:14px}
+small{color:#9fc9ad}
+</style></head><body>
+<h1>🛡 Virus VPN — Firebase Admin Panel</h1>
+<p><small>Database: Firebase Firestore (free tier). VPN traffic server is separate — this panel only stores servers, networks, users and settings. Setup steps are in FIREBASE-SETUP.md. Paste your Firebase web config in FIREBASE_CONFIG below.</small></p>
+
+<div class="card"><h2>🔐 Admin Login</h2>
+<p><small>Status: <b id="authStatus">Not logged in</b></small></p>
+<label>Email <input id="adminEmail" placeholder="admin@example.com"></label>
+<label>Password <input id="adminPass" type="password" placeholder="Admin password"></label>
+<button id="loginBtn">LOGIN</button>
+<button id="logoutBtn" class="ghost">LOGOUT</button>
+<p><small>Admin account: create it in Firebase Console → Authentication → Add user. Only that account can add/edit/delete below (see firestore.rules).</small></p>
+</div>
+
+<div class="card"><h2>📊 Live Overview (from Firestore)</h2>
+<div id="stats"><small>Login first — stats load from the users and servers collections.</small></div>
+<p><small>Server load is not in Firestore — it needs the traffic server. It shows "—" until that side exists.</small></p>
+</div>
+
+<div class="card"><h2>⚙️ App Settings</h2>
+<label>Config Version <input id="cfgVersion" value="2.0"></label>
+<label>Announcement <input id="announcement" placeholder="Message shown in the app"></label>
+<label>Telegram Channel URL <input id="telegramUrl" placeholder="https://t.me/yourchannel"></label>
+<button id="saveSettings">SAVE SETTINGS</button>
+</div>
+
+<div class="card"><h2>➕ Add Server / Protocol</h2>
+<label>Server name <input id="name" placeholder="Server-01 Bangladesh"></label>
+<label>Country code <input id="country" placeholder="BD" maxlength="2"></label>
+<label>Country name <input id="countryName" placeholder="Bangladesh"></label>
+<label>Tunnel Type
+<select id="tunnel"><option>V2Ray/Xray</option><option>Secure Shell (SSH)</option><option>Hysteria</option><option>Shadowsocks</option></select></label>
+<label>Connect From
+<select id="connectFrom"><option>None (Direct)</option><option>DNS (DNSTT)</option><option>HTTP Proxy</option><option>HTTP (Obfs)</option><option>TLS/SSL Proxy</option><option>TLS/SSL (Obfs)</option><option>TLS/SSL (stunnel)</option></select></label>
+<label><input type="checkbox" id="customPayload" style="width:auto"> Custom Payload</label>
+<label>Payload / server link <textarea id="link" rows="3" placeholder="vless://... (for SSH/Hysteria/Shadowsocks, paste that protocol's link/config here)"></textarea></label>
+<label><input type="checkbox" id="isFree" checked style="width:auto"> FREE (unchecked = PREMIUM)</label><br>
+<button id="addServerBtn">SAVE SERVER</button>
+</div>
+
+<div class="card"><h2>🌐 Add Network</h2>
+<label>Network name <input id="netName" placeholder="Airtel Facebook Pack"></label>
+<label>Subtitle <input id="netSubtitle" placeholder="19 Taka 1 Days Unlimited"></label>
+<label>Mode
+<select id="netMode"><option>UDP</option><option>SSL/TLS</option><option>INJECT</option></select></label>
+<label>Bug Host / Front Query <input id="netBugHost" placeholder="bug host — admin fills this, never invented"></label>
+<label>Back Query <input id="netBackQuery" placeholder="Back Query / Host"></label>
+<label>Payload <input id="netPayload" placeholder="Payload"></label>
+<button id="addNetworkBtn">SAVE NETWORK</button>
+</div>
+
+<div class="card"><h2>👤 Add User</h2>
+<label>Username <input id="userName" placeholder="user01"></label>
+<label>Expiry (date) <input id="userExpiry" type="date"></label>
+<label><input type="checkbox" id="userPremium" style="width:auto"> PREMIUM (unchecked = FREE)</label>
+<button id="addUserBtn">SAVE USER</button>
+<p><small>Users log in to the app with this username. Their password is set in Firebase Authentication (email/password) — never store plain passwords in Firestore.</small></p>
+</div>
+
+<div class="card"><h2>🖥 Servers / Networks / Users — what the app will see</h2>
+<table><thead><tr><th>Name</th><th>Detail</th><th>Type</th><th></th></tr></thead><tbody id="list"></tbody></table>
+<button id="exportBtn">⬇ Export app update JSON</button>
+<button id="copyBtn" class="ghost">Copy app update JSON</button>
+<pre id="out" style="white-space:pre-wrap;background:#0a1710;padding:10px;border-radius:10px"></pre>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// STEP 1 — Paste your Firebase web config here (Firebase Console → Project settings → Your apps → Web app).
+// Do NOT paste google-services.json here — this panel needs the WEB config object.
+const FIREBASE_CONFIG = {
+  "apiKey": "AIzaSyDY5dPTQOpAma9EF4m7sldPSEBbXZFLhyw",
+  "authDomain": "virus-vpn-6b4d6.firebaseapp.com",
+  "projectId": "virus-vpn-6b4d6",
+  "storageBucket": "virus-vpn-6b4d6.firebasestorage.app",
+  "messagingSenderId": "99111645366",
+  "appId": "1:99111645366:android:1d412063ffda946cb5b617"
+};
+
+let db = null, auth = null, servers = [], networks = [], users = [];
+const $ = id => document.getElementById(id);
+function flag(cc){ if(!cc||cc.length!==2) return '🌐'; const b=0x1F1E6; return String.fromCodePoint(b+cc.toUpperCase().charCodeAt(0)-65)+String.fromCodePoint(b+cc.toUpperCase().charCodeAt(1)-65); }
+
+try {
+  if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.startsWith("PASTE_")) {
+    $("authStatus").textContent = "Firebase config not set yet — paste it in FIREBASE_CONFIG (see FIREBASE-SETUP.md).";
+  } else {
+    const app = initializeApp(FIREBASE_CONFIG);
+    auth = getAuth(app); db = getFirestore(app);
+    onAuthStateChanged(auth, u => { $("authStatus").textContent = u ? ("Logged in: " + u.email) : "Not logged in"; if (u) startListening(); });
+  }
+} catch (e) { $("authStatus").textContent = "Firebase init failed: " + e.message; }
+
+$("loginBtn").onclick = async () => {
+  if (!auth) return alert("Set FIREBASE_CONFIG first.");
+  try { await signInWithEmailAndPassword(auth, $("adminEmail").value, $("adminPass").value); }
+  catch (e) { alert("Login failed: " + e.message); }
+};
+$("logoutBtn").onclick = () => { if (auth) signOut(auth); };
+
+function startListening() {
+  onSnapshot(collection(db, "servers"), s => { servers = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
+  onSnapshot(collection(db, "networks"), s => { networks = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
+  onSnapshot(collection(db, "users"), s => { users = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); });
+  getDoc(doc(db, "settings", "app")).then(d => { if (d.exists()) { $("cfgVersion").value = d.data().configVersion || "2.0"; $("announcement").value = d.data().announcement || ""; $("telegramUrl").value = d.data().telegramUrl || ""; } });
+}
+
+function render() {
+  const active = users.filter(u => u.active).length;
+  const gb = users.reduce((a, u) => a + (u.gbUsed || 0), 0);
+  $("stats").innerHTML =
+    `<div class="stat"><small>Active users now</small><b>${active}</b></div>
+     <div class="stat"><small>Total users</small><b>${users.length}</b></div>
+     <div class="stat"><small>Total used</small><b>${gb.toFixed(1)} GB</b></div>
+     <div class="stat"><small>Server load</small><b>—</b></div>
+     <div class="stat"><small>Servers</small><b>${servers.length}</b></div>
+     <div class="stat"><small>Networks</small><b>${networks.length}</b></div>`;
+  const rows = [
+    ...servers.map(s => `<tr><td>${flag(s.country)} ${s.name}</td><td>${s.tunnelType || ""} • ${s.connectFrom || ""}</td><td>${s.free ? "FREE" : "PREMIUM"}</td><td><button class="danger" onclick="window.__del('servers','${s.id}')">Delete</button></td></tr>`),
+    ...networks.map(n => `<tr><td>🌐 ${n.name}</td><td>${n.mode || ""} • ${n.subtitle || ""}</td><td>NETWORK</td><td><button class="danger" onclick="window.__del('networks','${n.id}')">Delete</button></td></tr>`),
+    ...users.map(u => `<tr><td>👤 ${u.username}</td><td>Expiry: ${u.expiry || "—"}</td><td>${u.premium ? "PREMIUM" : "FREE"}</td><td><button class="danger" onclick="window.__del('users','${u.id}')">Delete</button></td></tr>`)
+  ];
+  $("list").innerHTML = rows.join("") || '<tr><td colspan="4">Nothing yet. Login as admin, then add servers, networks and users above.</td></tr>';
+}
+window.__del = async (col, id) => { if (confirm("Delete this?")) await deleteDoc(doc(db, col, id)); };
+const needLogin = () => { if (!auth || !auth.currentUser) { alert("Login as admin first."); return false; } return true; };
+
+$("saveSettings").onclick = async () => {
+  if (!needLogin()) return;
+  await setDoc(doc(db, "settings", "app"), { configVersion: $("cfgVersion").value, announcement: $("announcement").value, telegramUrl: $("telegramUrl").value });
+  alert("Settings saved to Firebase.");
+};
+$("addServerBtn").onclick = async () => {
+  if (!needLogin()) return;
+  const link = $("link").value.trim(); if (!link) return alert("Paste a server link/config first.");
+  const tunnel = $("tunnel").value;
+  const protocol = tunnel.includes("SSH") ? "SSH" : tunnel.includes("Hysteria") ? "HYSTERIA" : tunnel.includes("Shadow") ? "SHADOWSOCKS" : "VLESS";
+  await addDoc(collection(db, "servers"), { name: $("name").value || "Unnamed", country: $("country").value || "", countryName: $("countryName").value || "", tunnelType: tunnel, connectFrom: $("connectFrom").value, customPayload: $("customPayload").checked, link, free: $("isFree").checked, protocol });
+  alert("Server saved to Firebase.");
+};
+$("addNetworkBtn").onclick = async () => {
+  if (!needLogin()) return;
+  const name = $("netName").value.trim(); if (!name) return alert("Network name first.");
+  await addDoc(collection(db, "networks"), { name, subtitle: $("netSubtitle").value, mode: $("netMode").value, icon: "", bugHost: $("netBugHost").value, frontQuery: $("netBugHost").value, backQuery: $("netBackQuery").value, payload: $("netPayload").value });
+  alert("Network saved to Firebase.");
+};
+$("addUserBtn").onclick = async () => {
+  if (!needLogin()) return;
+  const username = $("userName").value.trim(); if (!username) return alert("Username first.");
+  await addDoc(collection(db, "users"), { username, expiry: $("userExpiry").value || "", premium: $("userPremium").checked, active: false, gbUsed: 0 });
+  alert("User saved to Firebase. Set their password in Firebase Authentication.");
+};
+function appJSON() {
+  return { configVersion: $("cfgVersion").value, announcement: $("announcement").value, telegramUrl: $("telegramUrl").value,
+    servers: servers.map(s => ({ name: s.name, country: s.country, countryName: s.countryName, free: s.free, protocol: s.protocol, tunnelType: s.tunnelType, connectFrom: s.connectFrom, customPayload: s.customPayload, link: s.link })),
+    networks: networks.map(n => ({ name: n.name, subtitle: n.subtitle, mode: n.mode, icon: n.icon || "", bugHost: n.bugHost || "", frontQuery: n.frontQuery || "", backQuery: n.backQuery || "", payload: n.payload || "" })) };
+}
+$("exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(appJSON(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "virus-vpn-update.json"; a.click();
+  $("out").textContent = JSON.stringify(appJSON(), null, 2);
+};
+$("copyBtn").onclick = () => { navigator.clipboard.writeText(JSON.stringify(appJSON(), null, 2)); alert("App update JSON copied."); };
+render();
+</script>
+</body></html>
