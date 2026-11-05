@@ -65,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -308,10 +309,11 @@ fun VirusHomeScreen(onExit: () -> Unit) {
     )
 
     Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.TopCenter) {
+        Column(modifier = Modifier.fillMaxSize().widthIn(max = 480.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 480.dp)
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -345,10 +347,12 @@ fun VirusHomeScreen(onExit: () -> Unit) {
                 color = if (isRunning) Green else Red,
                 fontSize = 22.sp, fontWeight = FontWeight.Bold,
             )
-            Text(
-                "Config: $configVersion  •  IP: ${selectedServer?.address ?: "--"}  •  " + if (isRunning) formatDuration(durationSec) else "00:00:00",
-                fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-            )
+            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(LightGreen).padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "Config: $configVersion  •  IP: ${selectedServer?.address ?: "--"}  •  " + if (isRunning) formatDuration(durationSec) else "00:00:00",
+                    fontSize = 12.sp, color = Color(0xFF1B5E20), textAlign = TextAlign.Center,
+                )
+            }
             Spacer(Modifier.height(12.dp))
 
             // Real-time graph, visible while connected.
@@ -495,12 +499,37 @@ fun VirusHomeScreen(onExit: () -> Unit) {
             }
             Spacer(Modifier.height(24.dp))
 
-            Row(modifier = Modifier.fillMaxWidth()) {
-                BottomButton(label = "UPDATES", icon = "↓", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
-                BottomButton(label = "TWEAKS", icon = "🛠", modifier = Modifier.weight(1f)) { showTweakAccessDialog = true }
-                BottomButton(label = "EXIT", icon = "↪", modifier = Modifier.weight(1f)) { onExit() }
+            Spacer(Modifier.height(16.dp))
+            // Telegram channel box — below START, link comes from the admin panel.
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).background(Color.White)
+                    .clickable {
+                        if (telegramUrl.isBlank()) {
+                            Toast.makeText(context, "Telegram channel not set by admin yet.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl))) }
+                            catch (_: Exception) { Toast.makeText(context, "Could not open Telegram link.", Toast.LENGTH_SHORT).show() }
+                        }
+                    }.padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✈", color = Green, fontSize = 22.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Telegram Channel", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Join Now", color = Green, fontSize = 12.sp)
+                    }
+                    Text("›", color = Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Spacer(Modifier.height(12.dp))
+        }
+        // Fixed bottom navigation — always visible, never scrolled away.
+        Row(modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            BottomButton(label = "UPDATES", icon = "↓", modifier = Modifier.weight(1f)) { updateStatus = ""; showUpdateDialog = true }
+            BottomButton(label = "TWEAKS", icon = "🛠", modifier = Modifier.weight(1f)) { showTweakAccessDialog = true }
+            BottomButton(label = "EXIT", icon = "↪", modifier = Modifier.weight(1f)) { onExit() }
+        }
         }
     }
 
@@ -608,7 +637,7 @@ private fun startVpnService(context: Context) {
 @Composable
 private fun VirusCard(label: String, onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
     Box(
-        modifier = Modifier.fillMaxWidth().border(2.dp, Green, RoundedCornerShape(12.dp)).padding(4.dp).clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).border(2.dp, Green, RoundedCornerShape(12.dp)).padding(4.dp).clickable { onClick() },
     ) {
         Column {
             Text(label, color = Green, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 2.dp))
